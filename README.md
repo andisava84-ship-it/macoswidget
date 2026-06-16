@@ -1,5 +1,7 @@
 # Claude Usage Bar
 
+![Claude Usage Bar — a macOS menu-bar widget for your Claude plan limits](docs/banner.png)
+
 A tiny macOS **menu-bar widget** that shows your **real Claude plan usage** — the same numbers as Claude Code's `/usage` panel — at a glance.
 
 It reads your Claude Code login from the macOS Keychain and calls Claude's own usage endpoint, so the numbers are exact (not estimated). Two little segment meters sit in your menu bar:

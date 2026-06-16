@@ -2,4 +2,4 @@
 *.app/
 build/
 *.png
-claude-usage-preview.png
+!docs/banner.png
