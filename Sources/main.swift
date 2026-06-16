@@ -266,6 +266,10 @@ let launchLabel = "com.claudeusagebar"
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
     var latest: Fetch = .error("loading")
+    var lastGood: Usage?              // last successful fetch — kept on screen through transient blips
+    var lastGoodAt: Date?
+    var lastFetchAt: Date?
+    var backoffUntil: Date?           // set after a 429 so we stop hitting the endpoint for a while
     var timer: Timer?
     let mono = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 
@@ -275,13 +279,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         let menu = NSMenu(); menu.delegate = self; statusItem.menu = menu
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in self?.refresh() }
+        timer = Timer.scheduledTimer(withTimeInterval: 180, repeats: true) { [weak self] _ in self?.refresh() }
     }
 
     func refresh() {
+        if let b = backoffUntil, Date() < b { return }      // backing off after a 429
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let f = fetchUsage()
-            DispatchQueue.main.async { self?.latest = f; self?.updateButton() }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.lastFetchAt = Date()
+                switch f {
+                case .ok(let u):
+                    self.lastGood = u; self.lastGoodAt = Date(); self.latest = .ok(u); self.backoffUntil = nil
+                case .needsLogin:
+                    self.latest = .needsLogin               // persistent — surface it, don't show stale
+                case .error(let e):
+                    if e.contains("429") { self.backoffUntil = Date().addingTimeInterval(300) }  // 5-min cooldown
+                    self.latest = self.lastGood.map { .ok($0) } ?? .error(e)   // keep last-good through a blip
+                }
+                self.updateButton()
+            }
         }
     }
 
@@ -299,7 +317,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    func menuWillOpen(_ menu: NSMenu) { refresh() }
+    func menuWillOpen(_ menu: NSMenu) {
+        if let t = lastFetchAt, Date().timeIntervalSince(t) < 20 { return }   // use cached data; don't spam the endpoint
+        refresh()
+    }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -319,7 +340,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             it.isEnabled = false; menu.addItem(it)
         }
 
-        header("Claude plan usage")
+        var hdr = "Claude plan usage"
+        if case .ok = latest, let t = lastGoodAt {
+            let m = Int(Date().timeIntervalSince(t) / 60)
+            if m >= 5 { hdr += "  ·  \(m)m ago" }   // we're showing last-good data through a rate-limit/blip
+        }
+        header(hdr)
         switch latest {
         case .ok(let u):
             if let g = u.fiveHour {
@@ -358,7 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @discardableResult func add(_ menu: NSMenu, _ title: String, _ sel: Selector) -> NSMenuItem {
         let it = NSMenuItem(title: title, action: sel, keyEquivalent: ""); it.target = self; menu.addItem(it); return it
     }
-    @objc func doRefresh() { refresh() }
+    @objc func doRefresh() { backoffUntil = nil; lastFetchAt = nil; refresh() }
     @objc func quit() { NSApp.terminate(nil) }
     @objc func toggleLogin() {
         let fm = FileManager.default

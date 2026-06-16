@@ -74,7 +74,7 @@ Open this repo in [Claude Code](https://claude.com/claude-code) and ask it to *"
 1. Reads the Claude Code OAuth token from the macOS Keychain item `Claude Code-credentials` (via `/usr/bin/security`).
 2. If the access token is expired, refreshes it against `https://platform.claude.com/v1/oauth/token` using Claude Code's public OAuth client ID, and writes the rotated token back to the Keychain **only on success** (a failed refresh can never corrupt your login).
 3. Calls `GET https://api.anthropic.com/api/oauth/usage` and renders the result.
-4. Polls every 2 minutes, on menu open, and on **Refresh now**.
+4. Polls about every 3 minutes, on menu open (throttled), and on **Refresh now** — and backs off for 5 minutes if the endpoint rate-limits (HTTP 429), keeping the last-known numbers on screen meanwhile.
 
 ### Privacy & security
 
@@ -88,7 +88,7 @@ Open this repo in [Claude Code](https://claude.com/claude-code) and ask it to *"
 
 Everything is in [`Sources/main.swift`](Sources/main.swift); edit and re-run `./build.sh`:
 
-- **Refresh interval** — `Timer.scheduledTimer(withTimeInterval: 120, …)`.
+- **Refresh interval** — `Timer.scheduledTimer(withTimeInterval: 180, …)`.
 - **Colors** — `gaugeColor(_:)` (Claude clay → rust → dark rust-red by load).
 - **Segments / layout** — `dualBarImage(…)`.
 
